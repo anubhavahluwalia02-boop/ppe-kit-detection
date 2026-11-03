@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart PPE Kit Detection System (YOLOv5)</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-icon">🦺</div>
+        <div class="brand-text">
+          <h2>SAFEGUARD AI</h2>
+          <span>PPE Detection (YOLOv5)</span>
+        </div>
+      </div>
+
+      <nav class="nav-menu">
+        <button class="nav-item active" data-tab="dashboard">
+          <span class="icon">📊</span> Dashboard
+        </button>
+        <button class="nav-item" data-tab="live">
+          <span class="icon">📹</span> Live Camera
+        </button>
+        <button class="nav-item" data-tab="upload">
+          <span class="icon">🖼️</span> Image Analysis
+        </button>
+        <button class="nav-item" data-tab="history">
+          <span class="icon">📋</span> Violation History
+        </button>
+        <button class="nav-item" data-tab="model">
+          <span class="icon">⚙️</span> Model Info
+        </button>
+        <button class="nav-item" data-tab="about">
+          <span class="icon">ℹ️</span> About Project
+        </button>
+      </nav>
+
+      <div class="model-badge" id="model-status-badge">
+        <span class="dot yellow"></span>
+        <span class="label">Checking Model...</span>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="page-title">
+          <h1 id="current-view-title">Industrial Safety Dashboard</h1>
+          <p id="current-view-desc">Real-time workplace PPE compliance monitoring</p>
+        </div>
+        <div class="top-actions">
+          <div class="status-pill safe" id="top-compliance-pill">
+            <span class="indicator"></span> SYSTEM READY
+          </div>
+          <div class="time-display" id="clock-display">00:00:00</div>
+        </div>
+      </header>
+
+      <!-- Model Missing Banner (Shows if best.pt is missing) -->
+      <div class="alert-banner warning" id="missing-model-alert" style="display: none;">
+        <div class="alert-icon">⚠️</div>
+        <div class="alert-body">
+          <strong>YOLOv5 Model File Missing (models/best.pt)</strong>
+          <p>Trained weights were not found. Detection features are on standby. Please place your trained <code>best.pt</code> file into the <code>models/</code> directory, or consult the Model Info tab for instructions.</p>
+        </div>
+      </div>
+
+      <!-- Tab 1: Dashboard -->
+      <section class="tab-pane active" id="pane-dashboard">
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Detected Workers</span>
+              <span class="metric-icon">👷</span>
+            </div>
+            <div class="metric-value" id="stat-total-workers">0</div>
+            <div class="metric-sub">Monitored Personnel</div>
+          </div>
+
+          <div class="metric-card success">
+            <div class="metric-header">
+              <span class="metric-title">Compliant Workers</span>
+              <span class="metric-icon">✅</span>
+            </div>
+            <div class="metric-value" id="stat-compliant-workers">0</div>
+            <div class="metric-sub text-green">100% Full PPE Wearers</div>
+          </div>
+
+          <div class="metric-card danger">
+            <div class="metric-header">
+              <span class="metric-title">PPE Violations</span>
+              <span class="metric-icon">🚨</span>
+            </div>
+            <div class="metric-value" id="stat-violations">0</div>
+            <div class="metric-sub text-red">Active Safety Infractions</div>
+          </div>
+
+          <div class="metric-card">
+            <div class="metric-header">
+              <span class="metric-title">Total PPE Items</span>
+              <span class="metric-icon">🪖</span>
+            </div>
+            <div class="metric-value" id="stat-ppe-items">0</div>
+            <div class="metric-sub">Helmets, Vests, Boots, etc.</div>
+          </div>
+
+          <div class="metric-card highlight">
+            <div class="metric-header">
+              <span class="metric-title">Overall Compliance</span>
+              <span class="metric-icon">📈</span>
+            </div>
+            <div class="metric-value" id="stat-compliance-rate">--%</div>
+            <div class="metric-sub">Safety Compliance Score</div>
+          </div>
+        </div>
+
+        <div class="dashboard-panels">
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Mandatory PPE Checklist Standard</h3>
+              <span class="badge">OSHA / ISO 45001</span>
+            </div>
+            <div class="checklist-grid">
+              <div class="check-item"><span class="badge-icon">🪖</span> Safety Helmet</div>
+              <div class="check-item"><span class="badge-icon">🦺</span> High-Visibility Vest</div>
+              <div class="check-item"><span class="badge-icon">🧤</span> Protective Gloves</div>
+              <div class="check-item"><span class="badge-icon">🥽</span> Safety Goggles</div>
+              <div class="check-item"><span class="badge-icon">🥾</span> Steel-Toe Boots</div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Recent Violation Stream</h3>
+              <a href="#" class="view-all-link" data-tab="history">View All →</a>
+            </div>
+            <div class="stream-container" id="dashboard-recent-stream">
+              <div class="empty-state">No violations logged yet.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 2: Live Camera Detection -->
+      <section class="tab-pane" id="pane-live">
+        <div class="live-layout">
+          <div class="live-viewport-card">
+            <div class="viewport-header">
+              <div class="viewport-status" id="live-status-pill">
+                <span class="dot red"></span> CAMERA INACTIVE
+              </div>
+              <div class="controls-row">
+                <button class="btn btn-primary" id="btn-start-camera">▶ Start Camera</button>
+                <button class="btn btn-secondary" id="btn-stop-camera" disabled>⏹ Stop Camera</button>
+                <button class="btn btn-icon" id="btn-toggle-sound" title="Toggle Sound Alarm">🔊</button>
+              </div>
+            </div>
+
+            <div class="video-container">
+              <video id="live-video" autoplay playsinline muted style="display: none;"></video>
+              <canvas id="live-canvas"></canvas>
+              <div class="video-overlay" id="camera-standby-overlay">
+                <div class="standby-content">
+                  <div class="standby-icon">📹</div>
+                  <h3>Webcam Disconnected</h3>
+                  <p>Click "Start Camera" to capture frames via browser WebRTC</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="live-footer">
+              <div class="live-info">
+                <span>FPS: <strong id="live-fps">0</strong></span>
+                <span>Latency: <strong id="live-latency">0 ms</strong></span>
+              </div>
+              <div class="live-thresh">
+                <label>Confidence Threshold: <span id="live-conf-val">45%</span></label>
+                <input type="range" id="live-conf-slider" min="10" max="95" value="45">
+              </div>
+            </div>
+          </div>
+
+          <div class="live-sidebar">
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Live Compliance Verdict</h3>
+              </div>
+              <div class="verdict-box safe" id="live-verdict-box">
+                <div class="verdict-title" id="live-verdict-title">READY</div>
+                <div class="verdict-desc" id="live-verdict-desc">Start webcam to begin inference</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h3>Active Objects In Frame</h3>
+              </div>
+              <div class="detected-list" id="live-detected-list">
+                <div class="empty-state">No detections currently</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 3: Image Analysis -->
+      <section class="tab-pane" id="pane-upload">
+        <div class="upload-layout">
+          <div class="upload-controls-card">
+            <div class="dropzone" id="image-dropzone">
+              <input type="file" id="image-file-input" accept="image/png, image/jpeg, image/jpg" style="display: none;">
+              <div class="dropzone-content">
+                <div class="drop-icon">📁</div>
+                <h3>Drag & Drop Safety Inspection Image</h3>
+                <p>Supports JPG, JPEG, PNG (High resolution supported)</p>
+                <button class="btn btn-primary" id="btn-browse-file">Browse Image</button>
+              </div>
+            </div>
+
+            <div class="inference-options">
+              <div class="option-group">
+                <label>Inference Confidence: <span id="upload-conf-val">45%</span></label>
+                <input type="range" id="upload-conf-slider" min="10" max="95" value="45">
+              </div>
+              <button class="btn btn-success" id="btn-run-inference" disabled>🔍 Analyze Image</button>
+            </div>
+          </div>
+
+          <div class="results-container" id="upload-results-section" style="display: none;">
+            <div class="result-images-grid">
+              <div class="img-preview-card">
+                <h4>Original Image</h4>
+                <div class="img-wrapper">
+                  <img id="result-orig-img" src="" alt="Original">
+                </div>
+              </div>
+
+              <div class="img-preview-card">
+                <h4>Annotated YOLOv5 Inference</h4>
+                <div class="img-wrapper">
+                  <img id="result-annot-img" src="" alt="Annotated">
+                </div>
+              </div>
+            </div>
+
+            <div class="analysis-verdict-card" id="analysis-verdict-card">
+              <div class="verdict-header">
+                <div class="verdict-status-badge" id="upload-verdict-badge">SAFE</div>
+                <h3 id="upload-verdict-heading">Compliance Verified</h3>
+              </div>
+              <div id="upload-workers-breakdown" class="workers-grid"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 4: Violation History -->
+      <section class="tab-pane" id="pane-history">
+        <div class="history-card">
+          <div class="history-header">
+            <h3>SQLite Violation Records</h3>
+            <div class="history-actions">
+              <button class="btn btn-secondary" id="btn-refresh-history">🔄 Refresh</button>
+              <button class="btn btn-danger" id="btn-clear-history">🗑️ Clear Records</button>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Timestamp</th>
+                  <th>Violation Type</th>
+                  <th>Missing PPE</th>
+                  <th>Confidence</th>
+                  <th>Source</th>
+                  <th>Evidence</th>
+                </tr>
+              </thead>
+              <tbody id="violations-tbody">
+                <tr><td colspan="7" class="text-center">Loading violations...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 5: Model Information -->
+      <section class="tab-pane" id="pane-model">
+        <div class="model-info-grid">
+          <div class="panel">
+            <div class="panel-header"><h3>YOLOv5 Architecture & Classes</h3></div>
+            <p>This system utilizes the <strong>Ultralytics YOLOv5</strong> architecture with dynamic class loading from <code>models/best.pt</code>.</p>
+            <table class="data-table compact">
+              <thead>
+                <tr><th>Category</th><th>Target Classes</th><th>Safety Status</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Safety Helmet</td><td>helmet, safety-helmet, hard-hat</td><td><span class="tag green">Mandatory</span></td></tr>
+                <tr><td>Safety Vest</td><td>vest, safety-vest, reflective-vest</td><td><span class="tag green">Mandatory</span></td></tr>
+                <tr><td>Safety Gloves</td><td>gloves, safety-gloves</td><td><span class="tag green">Mandatory</span></td></tr>
+                <tr><td>Safety Goggles</td><td>goggles, safety-goggles, glasses</td><td><span class="tag green">Mandatory</span></td></tr>
+                <tr><td>Safety Boots</td><td>boots, safety-boots, shoes</td><td><span class="tag green">Mandatory</span></td></tr>
+                <tr><td>Negative Classes</td><td>no-helmet, no-vest, no-gloves</td><td><span class="tag red">Violation</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header"><h3>Model Weights Configuration</h3></div>
+            <div class="model-details-list">
+              <div class="detail-row"><span>Target Path:</span> <code>models/best.pt</code></div>
+              <div class="detail-row"><span>Inference Framework:</span> <span>PyTorch (torch.hub)</span></div>
+              <div class="detail-row"><span>Default Input Resolution:</span> <span>640 x 640</span></div>
+              <div class="detail-row"><span>Person Association:</span> <span>Spatial Bounding Box Containment</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Tab 6: About Project -->
+      <section class="tab-pane" id="pane-about">
+        <div class="panel">
+          <h3>Smart PPE Kit Detection System Using YOLOv5</h3>
+          <p>Designed for industrial safety compliance at manufacturing plants, construction zones, and hazardous working environments.</p>
+          <h4>Windows Execution Quick-Start</h4>
+          <pre class="code-box">
+1. Create virtual environment:
+   python -m venv venv
+
+2. Activate virtual environment:
+   venv\Scripts\activate
+
+3. Install requirements:
+   pip install -r requirements.txt
+
+4. Run application:
+   python app.py
+
+5. Access Dashboard:
+   http://127.0.0.1:5000
+          </pre>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>

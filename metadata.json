@@ -1,0 +1,6 @@
+{
+  "name": "Smart PPE Kit Detection System (YOLOv5)",
+  "description": "AI-powered workplace safety monitoring and PPE compliance detection system using YOLOv5, OpenCV, and SQLite.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
