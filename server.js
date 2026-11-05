@@ -1,39 +1,40 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
-// Health check endpoint for Render automatic health checks
-app.get('/health', (req, res) => {
-  const mem = process.memoryUsage();
-  res.status(200).json({
-    status: 'healthy',
-    platform: 'Render-optimized',
-    rssMB: Math.round(mem.rss / (1024 * 1024)),
-    heapUsedMB: Math.round(mem.heapUsed / (1024 * 1024)),
-    uptimeSec: Math.round(process.uptime()),
-  });
-});
+// Find frontend build folder
+const possiblePaths = [
+  path.join(__dirname, 'dist'),
+  path.join(__dirname, 'src', 'dist'),
+  path.join(__dirname, 'build')
+];
 
-// Serve compiled static files with optimal caching
-app.use(
-  express.static(path.join(__dirname, 'dist'), {
-    maxAge: '1d',
-    etag: true,
-  })
+const frontendPath = possiblePaths.find(p =>
+  fs.existsSync(path.join(p, 'index.html'))
 );
 
-// SPA fallback to index.html
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+if (frontendPath) {
+  app.use(express.static(frontendPath));
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(frontendPath, 'index.html'));
+  });
+} else {
+  app.get('/', (req, res) => {
+    res.status(500).send('Frontend build missing. Check build configuration.');
+  });
+}
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy' });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Smart PPE System Production Server listening on http://0.0.0.0:${PORT}`);
-  console.log(`📦 Optimized for Render 500MB Disk & 512MB RAM limits`);
+  console.log(`Server running on port ${PORT}`);
 });
