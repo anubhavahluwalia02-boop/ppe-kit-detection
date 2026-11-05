@@ -29,14 +29,26 @@ export const PPE_CLASS_MAPPING: Record<string, string> = {
   'eye-protection': 'Safety Goggles',
   'boots': 'Safety Boots',
   'safety-boots': 'Safety Boots',
+  'safety_boots': 'Safety Boots',
+  'work-boots': 'Safety Boots',
+  'work_boots': 'Safety Boots',
+  'steel-toe-boots': 'Safety Boots',
+  'steel_toe_boots': 'Safety Boots',
   'shoes': 'Safety Boots',
+  'safety-shoes': 'Safety Boots',
   'person': 'Person',
   'worker': 'Person',
   'no-helmet': 'Missing Helmet',
+  'missing-helmet': 'Missing Helmet',
   'no-vest': 'Missing Vest',
+  'missing-vest': 'Missing Vest',
   'no-gloves': 'Missing Gloves',
+  'missing-gloves': 'Missing Gloves',
   'no-goggles': 'Missing Goggles',
+  'missing-goggles': 'Missing Goggles',
   'no-boots': 'Missing Boots',
+  'missing-boots': 'Missing Boots',
+  'missing_boots': 'Missing Boots',
 };
 
 /**
@@ -86,8 +98,14 @@ export const PPE_SYNONYMS: Record<string, string[]> = {
     'Safety Boots',
     'boots',
     'safety-boots',
+    'safety_boots',
+    'work-boots',
+    'work_boots',
+    'steel-toe-boots',
+    'steel_toe_boots',
     'shoes',
     'safety-shoes',
+    'footwear',
   ],
 };
 
@@ -156,40 +174,93 @@ export function calculateIoU(boxA: [number, number, number, number], boxB: [numb
 }
 
 /**
+ * Computes spatial overlap and affinity score between an item bounding box and a person bounding box.
+ * Returns a score from 0 (no relation) to > 1.0 (strong spatial and anatomical association).
+ */
+export function calculateSpatialAffinity(
+  itemBox: [number, number, number, number],
+  personBox: [number, number, number, number],
+  itemClass?: string
+): number {
+  const [iX1, iY1, iX2, iY2] = itemBox;
+  const [pX1, pY1, pX2, pY2] = personBox;
+
+  const itemArea = Math.max(1, (iX2 - iX1) * (iY2 - iY1));
+  const pWidth = Math.max(1, pX2 - pX1);
+  const pHeight = Math.max(1, pY2 - pY1);
+
+  // Compute intersection
+  const xA = Math.max(iX1, pX1);
+  const yA = Math.max(iY1, pY1);
+  const xB = Math.min(iX2, pX2);
+  const yB = Math.min(iY2, pY2);
+
+  const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+  const overlapRatio = interArea / itemArea;
+
+  const itemCenterX = (iX1 + iX2) / 2;
+  const itemCenterY = (iY1 + iY2) / 2;
+  const personCenterX = (pX1 + pX2) / 2;
+
+  // Horizontal containment distance (normalized by person half-width)
+  const normDistX = Math.abs(itemCenterX - personCenterX) / (pWidth / 2);
+  if (normDistX > 1.35) {
+    // Item is horizontally outside this person's torso corridor
+    return 0;
+  }
+
+  // Vertical relative position within person (0.0 = top of head, 1.0 = feet)
+  const relY = (itemCenterY - pY1) / pHeight;
+
+  let anatomicalPrior = 1.0;
+  const normalizedClass = itemClass ? itemClass.toLowerCase() : '';
+
+  if (normalizedClass.includes('helmet') || normalizedClass.includes('hat') || normalizedClass.includes('head')) {
+    // Helmets are expected near or slightly above cranial crown (relY: -0.15 to 0.35)
+    anatomicalPrior = relY >= -0.18 && relY <= 0.38 ? 1.5 : Math.max(0.1, 1.0 - Math.abs(relY - 0.1) * 2.0);
+  } else if (normalizedClass.includes('goggle') || normalizedClass.includes('glass') || normalizedClass.includes('eye')) {
+    // Eyewear expected around eye level (relY: 0.05 to 0.32)
+    anatomicalPrior = relY >= 0.05 && relY <= 0.32 ? 1.5 : Math.max(0.1, 1.0 - Math.abs(relY - 0.16) * 2.0);
+  } else if (normalizedClass.includes('vest')) {
+    // Vests expected in upper-mid torso (relY: 0.15 to 0.75)
+    anatomicalPrior = relY >= 0.15 && relY <= 0.75 ? 1.5 : Math.max(0.1, 1.0 - Math.abs(relY - 0.45) * 1.5);
+  } else if (normalizedClass.includes('boot') || normalizedClass.includes('shoe')) {
+    // Boots expected in lower body (relY >= 0.65)
+    anatomicalPrior = relY >= 0.65 && relY <= 1.20 ? 1.5 : Math.max(0.1, 1.0 - Math.abs(relY - 0.9) * 2.0);
+  } else if (normalizedClass.includes('glove')) {
+    // Gloves expected around hands / waist (relY: 0.30 to 0.80)
+    anatomicalPrior = relY >= 0.28 && relY <= 0.82 ? 1.3 : 0.7;
+  }
+
+  // Center alignment bonus
+  const centerBonus = Math.max(0, 1.0 - normDistX * 0.4);
+  const affinity = (overlapRatio * 0.75 + centerBonus * 0.25) * anatomicalPrior;
+
+  // Fallback containment check if bounding box has slight margin offset
+  const padX = pWidth * 0.18;
+  const padY = pHeight * 0.18;
+  const isContained =
+    itemCenterX >= pX1 - padX &&
+    itemCenterX <= pX2 + padX &&
+    itemCenterY >= pY1 - padY &&
+    itemCenterY <= pY2 + padY;
+
+  if (isContained && affinity < 0.25) {
+    return 0.35 * anatomicalPrior;
+  }
+
+  return affinity;
+}
+
+/**
  * Checks if item bounding box is inside or substantially overlapping person bounding box.
  */
 export function isItemAssociatedWithPerson(
   itemBox: [number, number, number, number],
   personBox: [number, number, number, number],
-  overlapRatioThresh = 0.25
+  overlapRatioThresh = 0.20
 ): boolean {
-  // Center-point containment check with 15% tolerance
-  const centerX = (itemBox[0] + itemBox[2]) / 2;
-  const centerY = (itemBox[1] + itemBox[3]) / 2;
-
-  const [pX1, pY1, pX2, pY2] = personBox;
-  const padX = (pX2 - pX1) * 0.15;
-  const padY = (pY2 - pY1) * 0.15;
-
-  if (
-    centerX >= pX1 - padX &&
-    centerX <= pX2 + padX &&
-    centerY >= pY1 - padY &&
-    centerY <= pY2 + padY
-  ) {
-    return true;
-  }
-
-  // Intersection area ratio check relative to item area
-  const xA = Math.max(itemBox[0], personBox[0]);
-  const yA = Math.max(itemBox[1], personBox[1]);
-  const xB = Math.min(itemBox[2], personBox[2]);
-  const yB = Math.min(itemBox[3], personBox[3]);
-
-  const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
-  const itemArea = Math.max(1, (itemBox[2] - itemBox[0]) * (itemBox[3] - itemBox[1]));
-
-  return interArea / itemArea >= overlapRatioThresh;
+  return calculateSpatialAffinity(itemBox, personBox) >= overlapRatioThresh;
 }
 
 /**
@@ -202,7 +273,7 @@ export function standardizeClassName(rawClass: string): string {
 
 /**
  * Analyzes detections against configurable required PPE checklist.
- * Associates PPE items with detected persons.
+ * Associates PPE items with detected persons using optimal spatial overlap and anatomical affinity.
  * Enforces: If reliable person-to-PPE association is not possible, output NEEDS REVIEW.
  */
 export function evaluateCompliance(
@@ -270,31 +341,64 @@ export function evaluateCompliance(
     };
   }
 
-  // Associate PPE items to each person
-  const workerEvaluations: WorkerEvaluation[] = [];
+  // Multi-Person Spatial Overlap & Exclusive PPE Association:
+  // For each positive PPE item, assign it to the person with highest spatial affinity
+  const personPPEList: { classes: string[]; rawClasses: string[] }[] = persons.map(() => ({
+    classes: [],
+    rawClasses: [],
+  }));
   const assignedPPEIndices = new Set<number>();
+
+  ppeItems.forEach((item, itemIdx) => {
+    let bestPersonIdx = -1;
+    let maxAffinity = 0.20; // threshold for valid spatial association
+
+    persons.forEach((person, pIdx) => {
+      // Prioritize explicit tag e.g. 'helmet-0' or 'vest-1'
+      const explicitMatch = item.id && item.id.endsWith(`-${pIdx}`);
+      const affinity = calculateSpatialAffinity(item.box, person.box, item.class) + (explicitMatch ? 10.0 : 0);
+      if (affinity > maxAffinity) {
+        maxAffinity = affinity;
+        bestPersonIdx = pIdx;
+      }
+    });
+
+    if (bestPersonIdx !== -1) {
+      personPPEList[bestPersonIdx].classes.push(standardizeClassName(item.class));
+      if (item.raw_class) personPPEList[bestPersonIdx].rawClasses.push(item.raw_class);
+      assignedPPEIndices.add(itemIdx);
+    }
+  });
+
+  // For each direct negative violation, assign to the person with highest spatial affinity
+  const personDirectViolations: string[][] = persons.map(() => []);
+
+  directViolations.forEach((dv) => {
+    let bestPersonIdx = -1;
+    let maxAffinity = 0.20;
+
+    persons.forEach((person, pIdx) => {
+      const explicitMatch = dv.id && dv.id.endsWith(`-${pIdx}`);
+      const affinity = calculateSpatialAffinity(dv.box, person.box, dv.class) + (explicitMatch ? 10.0 : 0);
+      if (affinity > maxAffinity) {
+        maxAffinity = affinity;
+        bestPersonIdx = pIdx;
+      }
+    });
+
+    if (bestPersonIdx !== -1) {
+      personDirectViolations[bestPersonIdx].push(standardizeClassName(dv.class));
+    }
+  });
+
+  // Evaluate each person independently
+  const workerEvaluations: WorkerEvaluation[] = [];
 
   persons.forEach((person, index) => {
     const workerId = index + 1;
-    const associatedPPE: string[] = [];
-    const associatedRawClasses: string[] = [];
-    const workerDirectViolations: string[] = [];
-
-    // Check direct violations
-    for (const dv of directViolations) {
-      if (isItemAssociatedWithPerson(dv.box, person.box)) {
-        workerDirectViolations.push(standardizeClassName(dv.class));
-      }
-    }
-
-    // Associate positive PPE
-    ppeItems.forEach((item, itemIdx) => {
-      if (isItemAssociatedWithPerson(item.box, person.box)) {
-        associatedPPE.push(standardizeClassName(item.class));
-        if (item.raw_class) associatedRawClasses.push(item.raw_class);
-        assignedPPEIndices.add(itemIdx);
-      }
-    });
+    const associatedPPE = personPPEList[index].classes;
+    const associatedRawClasses = personPPEList[index].rawClasses;
+    const workerDirectViolations = personDirectViolations[index];
 
     const uniqueDetected = Array.from(new Set(associatedPPE));
     const missingPPE = requiredPPE.filter((req) => !isRequirementSatisfied(req, associatedPPE, associatedRawClasses));

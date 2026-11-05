@@ -1,0 +1,16 @@
+# Lightweight Render-Optimized Requirements for Python YOLOv5 backend
+# Keeps disk footprint under 350 MB on Render's 500 MB Free Tier limit
+# Uses CPU-only PyTorch and headless OpenCV (saves over 1.8 GB compared to standard torch)
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.2.0+cpu
+torchvision==0.17.0+cpu
+opencv-python-headless>=4.8.0
+numpy>=1.24.0,<2.0.0
+flask==3.0.3
+Pillow>=9.5.0
+PyYAML>=6.0
+requests>=2.31.0
+tqdm>=4.65.0
+werkzeug>=3.0.0

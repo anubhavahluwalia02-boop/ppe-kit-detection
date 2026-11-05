@@ -10,6 +10,7 @@ import {
   AlertTriangle,
   X,
   ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { ViolationRecord } from '../types/ppe';
 
@@ -27,6 +28,7 @@ export const ViolationHistoryView: React.FC<ViolationHistoryViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSource, setSelectedSource] = useState<string>('all');
   const [previewEvidence, setPreviewEvidence] = useState<ViolationRecord | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'warning'; message: string } | null>(null);
 
   // Filter violations
   const filteredViolations = violations.filter((v) => {
@@ -40,52 +42,104 @@ export const ViolationHistoryView: React.FC<ViolationHistoryViewProps> = ({
     return matchesSearch && matchesSource;
   });
 
-  // Export to CSV
+  // Helper to safely format values for RFC 4180 CSV
+  const formatCSVField = (val: string | number | undefined | null): string => {
+    if (val === undefined || val === null) return '""';
+    const text = String(val).replace(/"/g, '""');
+    return `"${text}"`;
+  };
+
+  // Export current violation logs into a CSV format file
   const exportCSV = () => {
-    if (violations.length === 0) {
-      alert('No violation records to export.');
+    // Export currently filtered violation records (or all records if none filtered)
+    const recordsToExport = filteredViolations.length > 0 ? filteredViolations : violations;
+
+    if (recordsToExport.length === 0) {
+      setNotification({
+        type: 'warning',
+        message: 'No violation records available to export.',
+      });
+      setTimeout(() => setNotification(null), 3500);
       return;
     }
 
-    const headers = ['ID', 'Timestamp', 'Violation Type', 'Missing PPE', 'Confidence', 'Source', 'Details'];
-    const rows = violations.map((v) => [
+    const headers = [
+      'Record ID',
+      'Timestamp',
+      'Infraction Classification',
+      'Missing Mandatory PPE',
+      'Confidence Score',
+      'Source Channel',
+      'Inspection Details',
+      'Has Evidence Photo',
+    ];
+
+    const rows = recordsToExport.map((v) => [
       v.id,
-      `"${v.timestamp}"`,
-      `"${v.violation_type}"`,
-      `"${v.missing_ppe.join('; ')}"`,
-      `${Math.round(v.confidence * 100)}%`,
-      `"${v.source}"`,
-      `"${v.details || ''}"`,
+      formatCSVField(v.timestamp),
+      formatCSVField(v.violation_type),
+      formatCSVField(v.missing_ppe.join('; ')),
+      formatCSVField(`${Math.round(v.confidence * 100)}%`),
+      formatCSVField(v.source),
+      formatCSVField(v.details || 'Logged safety infraction'),
+      formatCSVField(v.evidence_url ? 'Yes' : 'No'),
     ]);
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    // Prepend UTF-8 BOM (\uFEFF) for Microsoft Excel compatibility
+    const csvContent =
+      '\uFEFF' + [headers.join(','), ...rows.map((row) => row.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `ppe_violations_${Date.now()}.csv`);
+    link.href = url;
+    link.setAttribute('download', `ppe_violations_current_${Date.now()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setNotification({
+      type: 'success',
+      message: `Exported ${recordsToExport.length} current violation record(s) to CSV file successfully!`,
+    });
+    setTimeout(() => setNotification(null), 4000);
   };
 
   // Export to JSON
   const exportJSON = () => {
-    if (violations.length === 0) {
-      alert('No violation records to export.');
+    const recordsToExport = filteredViolations.length > 0 ? filteredViolations : violations;
+
+    if (recordsToExport.length === 0) {
+      setNotification({
+        type: 'warning',
+        message: 'No violation records available to export.',
+      });
+      setTimeout(() => setNotification(null), 3500);
       return;
     }
 
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(violations, null, 2))}`;
+    const jsonString = JSON.stringify(recordsToExport, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.href = jsonString;
+    link.href = url;
     link.download = `ppe_violations_${Date.now()}.json`;
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    setNotification({
+      type: 'success',
+      message: `Exported ${recordsToExport.length} violation record(s) to JSON file!`,
+    });
+    setTimeout(() => setNotification(null), 4000);
   };
 
   return (
     <div className="space-y-6">
       {/* Header & Actions Card */}
-      <div className="p-6 rounded-xl bg-slate-900 border border-slate-800">
+      <div className="p-6 rounded-xl bg-slate-900 border border-slate-800 space-y-4">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 border-b border-slate-800">
           <div>
             <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
@@ -100,26 +154,58 @@ export const ViolationHistoryView: React.FC<ViolationHistoryViewProps> = ({
           <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={exportCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
+              title="Export current violation records into CSV spreadsheet file"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/40 hover:border-emerald-400 text-xs font-bold transition cursor-pointer shadow-sm"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" /> Export CSV
+              <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+              <span>Export CSV</span>
+              <span className="px-1.5 py-0.2 rounded bg-emerald-500/25 text-[10px] font-mono text-emerald-200">
+                {filteredViolations.length}
+              </span>
             </button>
             <button
               onClick={exportJSON}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition"
+              title="Export violation logs as JSON"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold transition cursor-pointer"
             >
               <Download className="w-3.5 h-3.5 text-blue-400" /> Export JSON
             </button>
             {violations.length > 0 && (
               <button
                 onClick={onClearHistory}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 text-xs font-semibold transition"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-500/40 text-xs font-semibold transition cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Clear All Records
               </button>
             )}
           </div>
         </div>
+
+        {/* Export / Action Notification */}
+        {notification && (
+          <div
+            className={`p-3 rounded-lg border text-xs flex items-center justify-between transition-all ${
+              notification.type === 'success'
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+            }`}
+          >
+            <div className="flex items-center gap-2">
+              {notification.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+              )}
+              <span className="font-medium">{notification.message}</span>
+            </div>
+            <button
+              onClick={() => setNotification(null)}
+              className="p-1 text-slate-400 hover:text-white rounded cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Filters & Search */}
         <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
@@ -134,19 +220,29 @@ export const ViolationHistoryView: React.FC<ViolationHistoryViewProps> = ({
             />
           </div>
 
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <Filter className="w-3.5 h-3.5 text-slate-400" />
-            <span className="text-slate-400">Source:</span>
-            <select
-              value={selectedSource}
-              onChange={(e) => setSelectedSource(e.target.value)}
-              className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs"
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <Filter className="w-3.5 h-3.5 text-slate-400" />
+              <span className="text-slate-400">Source:</span>
+              <select
+                value={selectedSource}
+                onChange={(e) => setSelectedSource(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-blue-500"
+              >
+                <option value="all">All Channels</option>
+                <option value="live_camera">Live Camera Stream</option>
+                <option value="image_upload">Image Upload Inspection</option>
+                <option value="sample_test">Test Benchmark Fixture</option>
+              </select>
+            </div>
+            <button
+              onClick={exportCSV}
+              title="Download current logs in CSV format"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 text-emerald-300 border border-slate-800 hover:border-emerald-500/40 text-xs font-semibold transition cursor-pointer"
             >
-              <option value="all">All Channels</option>
-              <option value="live_camera">Live Camera Stream</option>
-              <option value="image_upload">Image Upload Inspection</option>
-              <option value="sample_test">Test Benchmark Fixture</option>
-            </select>
+              <Download className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Export CSV</span>
+            </button>
           </div>
         </div>
       </div>

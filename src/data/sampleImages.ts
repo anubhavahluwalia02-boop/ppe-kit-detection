@@ -42,7 +42,8 @@ function createSampleSVG(
     ? `<rect x="230" y="470" width="55" height="30" rx="6" fill="${bootsColor}" />
        <rect x="315" y="470" width="55" height="30" rx="6" fill="${bootsColor}" />`
     : `<rect x="235" y="480" width="50" height="20" rx="4" fill="#71717A" />
-       <rect x="315" y="480" width="50" height="20" rx="4" fill="#71717A" />`;
+       <rect x="315" y="480" width="50" height="20" rx="4" fill="#71717A" />
+       <text x="300" y="525" font-family="sans-serif" font-size="14" fill="#EF4444" text-anchor="middle" font-weight="bold">⚠️ NO BOOTS</text>`;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
     <rect width="600" height="600" fill="${bgColor}"/>
@@ -103,14 +104,15 @@ export const SAMPLE_TEST_CASES: TestSample[] = [
   },
   {
     id: 'sample-violation-critical',
-    name: 'Major Infraction (Missing Helmet & Vest)',
-    description: 'Worker in high-hazard structural zone without protective hard hat or high-visibility vest.',
+    name: 'Major Infraction (Missing Helmet, Vest & Boots)',
+    description: 'Worker in high-hazard structural zone without protective hard hat, high-visibility vest, or safety boots.',
     expectedStatus: 'VIOLATION',
     imageUrl: createSampleSVG('#0F172A', '#64748B', null, null, null, 'Structural Bay 3 - Unprotected Entry', 'VIOLATION', '#EF4444'),
     detections: [
       { class: 'Person', raw_class: 'person', confidence: 0.95, box: [170, 95, 430, 520] },
       { class: 'Missing Helmet', raw_class: 'no-helmet', confidence: 0.91, box: [240, 95, 360, 160] },
       { class: 'Missing Vest', raw_class: 'no-vest', confidence: 0.88, box: [230, 220, 370, 370] },
+      { class: 'Missing Boots', raw_class: 'no-boots', confidence: 0.90, box: [220, 465, 380, 515] },
       { class: 'Safety Gloves', raw_class: 'gloves', confidence: 0.82, box: [185, 320, 225, 360] },
     ],
   },
@@ -136,6 +138,53 @@ export const SAMPLE_TEST_CASES: TestSample[] = [
     detections: [
       { class: 'Safety Helmet', raw_class: 'helmet', confidence: 0.78, box: [225, 120, 375, 180] },
       { class: 'Safety Vest', raw_class: 'vest', confidence: 0.82, box: [220, 240, 380, 390] },
+    ],
+  },
+  {
+    id: 'sample-two-workers',
+    name: 'Dual Workers (2 People: 1 Compliant, 1 Violation)',
+    description: 'Detects 2 distinct workers: Worker #1 (left) is 100% compliant with Helmet & Vest; Worker #2 (right) is missing Helmet & Vest.',
+    expectedStatus: 'VIOLATION',
+    imageUrl: createSampleSVG('#090D16', '#334155', '#10B981', '#F59E0B', '#3B82F6', 'Dual Workstation - Station Alpha & Beta', '1 SAFE / 1 VIOLATION', '#F59E0B'),
+    detections: [
+      // Worker #1 (Left side - Compliant)
+      { id: 'person-0', class: 'Person', raw_class: 'person', confidence: 0.96, box: [40, 95, 270, 520] },
+      { id: 'helmet-0', class: 'Safety Helmet', raw_class: 'helmet', confidence: 0.95, box: [95, 95, 215, 155] },
+      { id: 'goggles-0', class: 'Safety Goggles', raw_class: 'goggles', confidence: 0.91, box: [115, 145, 195, 175] },
+      { id: 'vest-0', class: 'Safety Vest', raw_class: 'vest', confidence: 0.94, box: [90, 215, 220, 370] },
+      { id: 'boots-0', class: 'Safety Boots', raw_class: 'boots', confidence: 0.92, box: [90, 465, 220, 515] },
+
+      // Worker #2 (Right side - Violation: Missing Helmet & Vest)
+      { id: 'person-1', class: 'Person', raw_class: 'person', confidence: 0.95, box: [330, 95, 560, 520] },
+      { id: 'no-helmet-1', class: 'Missing Helmet', raw_class: 'no-helmet', confidence: 0.93, box: [385, 95, 505, 155] },
+      { id: 'no-vest-1', class: 'Missing Vest', raw_class: 'no-vest', confidence: 0.89, box: [380, 215, 510, 370] },
+      { id: 'boots-1', class: 'Safety Boots', raw_class: 'boots', confidence: 0.90, box: [380, 465, 510, 515] },
+    ],
+  },
+  {
+    id: 'sample-three-workers',
+    name: 'Crew Tracking (3 People: 2 Compliant, 1 Violation)',
+    description: 'Detects 3 distinct workers: Worker #1 (left) and Worker #2 (center) wear full safety gear; Worker #3 (right) has no helmet.',
+    expectedStatus: 'VIOLATION',
+    imageUrl: createSampleSVG('#090D16', '#1E293B', '#10B981', '#F59E0B', '#3B82F6', 'Assembly Line Crew - Station 1, 2, 3', '2 SAFE / 1 VIOLATION', '#F59E0B'),
+    detections: [
+      // Worker #1 (Left - Compliant)
+      { id: 'person-0', class: 'Person', raw_class: 'person', confidence: 0.96, box: [20, 100, 190, 520] },
+      { id: 'helmet-0', class: 'Safety Helmet', raw_class: 'helmet', confidence: 0.94, box: [60, 100, 150, 155] },
+      { id: 'vest-0', class: 'Safety Vest', raw_class: 'vest', confidence: 0.92, box: [55, 215, 155, 370] },
+      { id: 'boots-0', class: 'Safety Boots', raw_class: 'boots', confidence: 0.90, box: [55, 465, 155, 515] },
+
+      // Worker #2 (Center - Compliant)
+      { id: 'person-1', class: 'Person', raw_class: 'person', confidence: 0.97, box: [210, 100, 380, 520] },
+      { id: 'helmet-1', class: 'Safety Helmet', raw_class: 'helmet', confidence: 0.95, box: [250, 100, 340, 155] },
+      { id: 'vest-1', class: 'Safety Vest', raw_class: 'vest', confidence: 0.93, box: [245, 215, 345, 370] },
+      { id: 'boots-1', class: 'Safety Boots', raw_class: 'boots', confidence: 0.89, box: [245, 465, 345, 515] },
+
+      // Worker #3 (Right - Violation: Missing Helmet)
+      { id: 'person-2', class: 'Person', raw_class: 'person', confidence: 0.95, box: [400, 100, 570, 520] },
+      { id: 'no-helmet-2', class: 'Missing Helmet', raw_class: 'no-helmet', confidence: 0.92, box: [440, 100, 530, 155] },
+      { id: 'vest-2', class: 'Safety Vest', raw_class: 'vest', confidence: 0.91, box: [435, 215, 535, 370] },
+      { id: 'boots-2', class: 'Safety Boots', raw_class: 'boots', confidence: 0.88, box: [435, 465, 535, 515] },
     ],
   },
 ];

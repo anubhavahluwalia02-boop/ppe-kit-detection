@@ -71,25 +71,91 @@ export const ImageAnalysisView: React.FC<ImageAnalysisViewProps> = ({
       // Draw bounding boxes for valid detections
       const validDetections = rawDetections.filter((d) => d.confidence >= confThreshold);
 
-      validDetections.forEach((det) => {
+      const personDets = validDetections.filter(
+        (d) => d.class === 'Person' || d.raw_class === 'person'
+      );
+      const hasMultipleWorkers = personDets.length > 1;
+      const comp = evaluateCompliance(validDetections, requiredPPE);
+
+      validDetections.forEach((det, dIdx) => {
         const [x1, y1, x2, y2] = det.box;
-        const color = CLASS_COLORS[det.class] || '#38BDF8';
+        const isPerson = det.class === 'Person' || det.raw_class === 'person';
+        const isMissingHelmet = det.class === 'Missing Helmet' || det.raw_class === 'no-helmet';
+        const isSafetyHelmet = det.class === 'Safety Helmet';
+        const isMissingBoots = det.class === 'Missing Boots' || det.raw_class === 'no-boots';
+        const isSafetyBoots = det.class === 'Safety Boots';
         const isViolation = det.class.startsWith('Missing ') || det.class.toLowerCase().includes('no-');
 
+        const workerMatch = det.id?.match(/-(\d+)$/);
+        const workerIdx = workerMatch ? parseInt(workerMatch[1], 10) + 1 : undefined;
+
+        // Find worker evaluation if person
+        let workerEval = workerIdx
+          ? comp.worker_evaluations?.find((we) => we.worker_id === workerIdx)
+          : undefined;
+        if (isPerson && !workerEval && comp.worker_evaluations?.length) {
+          const personIdx = personDets.findIndex((p) => p.id === det.id);
+          workerEval = comp.worker_evaluations[personIdx >= 0 ? personIdx : 0];
+        }
+
+        const isCompliant = isPerson ? (workerEval ? workerEval.status === 'SAFE' : comp.status === 'SAFE') : false;
+
+        let color = CLASS_COLORS[det.class] || '#38BDF8';
+        if (isPerson) {
+          color = isCompliant ? '#10B981' : '#EF4444'; // Green for compliant, Red for violation
+        } else if (isMissingHelmet || isMissingBoots || isViolation) {
+          color = '#EF4444';
+        } else if (isSafetyHelmet) {
+          color = '#10B981';
+        } else if (isSafetyBoots) {
+          color = '#3B82F6';
+        }
+
         ctx.save();
-        ctx.strokeStyle = isViolation ? '#EF4444' : color;
-        ctx.lineWidth = Math.max(3, Math.round(canvas.width / 200));
+
+        if (isPerson) {
+          // Translucent fill
+          ctx.fillStyle = isCompliant ? 'rgba(16, 185, 129, 0.08)' : 'rgba(239, 68, 68, 0.12)';
+          ctx.fillRect(x1, y1, x2 - x1, y2 - y1);
+        }
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth = isPerson ? Math.max(2.5, Math.round(canvas.width / 260)) : Math.max(2.5, Math.round(canvas.width / 220));
+
+        if (isPerson && !isCompliant) {
+          ctx.setLineDash([8, 6]);
+        } else if (isMissingHelmet || isMissingBoots || isViolation) {
+          ctx.setLineDash([8, 4]);
+        } else {
+          ctx.setLineDash([]);
+        }
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+        ctx.setLineDash([]);
 
         // Label tag
-        const label = `${det.class} ${Math.round(det.confidence * 100)}%`;
-        const fontSize = Math.max(13, Math.round(canvas.width / 45));
-        ctx.font = `bold ${fontSize}px sans-serif`;
+        const prefix = (hasMultipleWorkers || (workerIdx && workerIdx > 1)) && workerIdx ? `W#${workerIdx}: ` : '';
+        let label = `${prefix}${det.class} ${Math.round(det.confidence * 100)}%`;
+
+        if (isPerson) {
+          const statusText = isCompliant ? 'COMPLIANT [SAFE] ✓' : 'VIOLATION [NON-COMPLIANT] ✕';
+          label = `👤 Worker #${workerIdx || 1} • ${statusText}`;
+        } else if (isMissingHelmet) {
+          label = `⚠️ ${prefix}NO HELMET (VIOLATION)`;
+        } else if (isSafetyHelmet) {
+          label = `✓ ${prefix}SAFETY HELMET (WORN) ${Math.round(det.confidence * 100)}%`;
+        } else if (isMissingBoots) {
+          label = `⚠️ ${prefix}NO BOOTS (VIOLATION)`;
+        } else if (isSafetyBoots) {
+          label = `✓ ${prefix}SAFETY BOOTS (WORN) ${Math.round(det.confidence * 100)}%`;
+        }
+
+        const fontSize = isPerson ? Math.max(12, Math.round(canvas.width / 44)) : Math.max(11, Math.round(canvas.width / 50));
+        ctx.font = `bold ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
         const textWidth = ctx.measureText(label).width;
 
         const tagHeight = fontSize + 8;
         const bgY = Math.max(0, y1 - tagHeight);
-        ctx.fillStyle = isViolation ? '#EF4444' : color;
+        ctx.fillStyle = color;
         ctx.fillRect(x1, bgY, textWidth + 14, tagHeight);
 
         // Text
@@ -98,7 +164,7 @@ export const ImageAnalysisView: React.FC<ImageAnalysisViewProps> = ({
         ctx.restore();
       });
     };
-  }, [currentImageSrc, rawDetections, confThreshold]);
+  }, [currentImageSrc, rawDetections, confThreshold, requiredPPE]);
 
   // Handle local image file upload (JPG, JPEG, PNG)
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +196,12 @@ export const ImageAnalysisView: React.FC<ImageAnalysisViewProps> = ({
             offscreenCanvas,
             null,
             { helmet: false, vest: false, goggles: false, gloves: false, boots: false },
-            confThreshold
+            confThreshold,
+            0.5,
+            0.5,
+            'auto',
+            0.5,
+            requiredPPE
           );
           setRawDetections(detections);
         }

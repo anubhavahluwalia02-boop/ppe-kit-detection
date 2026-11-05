@@ -709,6 +709,114 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 `,
   },
+  {
+    path: 'render.yaml',
+    content: `# Render Infrastructure as Code Blueprint
+# Specially optimized for Render Free Tier (500 MB Disk / 512 MB RAM)
+
+services:
+  # Option 1 (RECOMMENDED): Static Site - 0 MB Disk usage on Render, Instant CDN
+  - type: web
+    name: smart-ppe-detection-site
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+  # Option 2: Node.js Web Service (Express server, under 30MB disk footprint)
+  # - type: web
+  #   name: smart-ppe-detection-node
+  #   env: node
+  #   plan: free
+  #   buildCommand: npm install && npm run render-prune
+  #   startCommand: node server.js
+  #   healthCheckPath: /health
+  #   envVars:
+  #     - key: NODE_ENV
+  #       value: production
+  #     - key: PORT
+  #       value: 10000
+`,
+  },
+  {
+    path: 'requirements-render.txt',
+    content: `# Lightweight Render-Optimized Requirements for Python YOLOv5 backend
+# Keeps disk footprint under 350 MB on Render's 500 MB Free Tier limit
+# Uses CPU-only PyTorch and headless OpenCV (saves over 1.8 GB compared to standard torch)
+
+--extra-index-url https://download.pytorch.org/whl/cpu
+
+torch==2.2.0+cpu
+torchvision==0.17.0+cpu
+opencv-python-headless>=4.8.0
+numpy>=1.24.0,<2.0.0
+flask==3.0.3
+Pillow>=9.5.0
+PyYAML>=6.0
+requests>=2.31.0
+tqdm>=4.65.0
+werkzeug>=3.0.0
+`,
+  },
+  {
+    path: 'server.js',
+    content: `import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get('/health', (req, res) => {
+  const mem = process.memoryUsage();
+  res.status(200).json({
+    status: 'healthy',
+    platform: 'Render-optimized',
+    rssMB: Math.round(mem.rss / (1024 * 1024)),
+    heapUsedMB: Math.round(mem.heapUsed / (1024 * 1024)),
+    uptimeSec: Math.round(process.uptime()),
+  });
+});
+
+app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d', etag: true }));
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(\`Smart PPE Server listening on port \${PORT}\`);
+});
+`,
+  },
+  {
+    path: '.renderignore',
+    content: `node_modules/
+.aistudio/
+.git/
+dist/
+coverage/
+*.log
+.DS_Store
+*.tmp
+*.zip
+smart-ppe-detection/uploads/
+smart-ppe-detection/evidence/
+smart-ppe-detection/runs/
+smart-ppe-detection/models/*.pt
+`,
+  },
 ];
 
 export async function generateProjectZip(): Promise<Blob> {

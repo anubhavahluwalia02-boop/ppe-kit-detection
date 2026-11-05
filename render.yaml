@@ -1,0 +1,46 @@
+# Render Infrastructure as Code (render.yaml)
+# Smart PPE Kit Detection System
+# Specially optimized for Render Free Tier (500 MB Disk / 512 MB RAM limits)
+
+services:
+  # -----------------------------------------------------------------
+  # OPTION 1 (RECOMMENDED): Render Static Site
+  # - Disk Usage: 0 MB of your 500 MB service quota (uses Render CDN)
+  # - Memory Usage: 0 MB server RAM
+  # - Cold Starts: NONE (Immediate loading worldwide)
+  # - Total Bundle Size: ~983 KB (< 1 MB!)
+  # -----------------------------------------------------------------
+  - type: web
+    name: smart-ppe-detection-site
+    env: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+
+  # -----------------------------------------------------------------
+  # OPTION 2: Render Node.js Web Service
+  # - Disk Usage: Pruned to ~25 MB (out of 500 MB available)
+  # - Uses lightweight Express server with automatic health check
+  # - To enable this, uncomment the block below or select "Web Service" in Render UI
+  # -----------------------------------------------------------------
+  # - type: web
+  #   name: smart-ppe-detection-node
+  #   env: node
+  #   plan: free
+  #   buildCommand: npm install && npm run render-prune
+  #   startCommand: node server.js
+  #   healthCheckPath: /health
+  #   envVars:
+  #     - key: NODE_ENV
+  #       value: production
+  #     - key: PORT
+  #       value: 10000

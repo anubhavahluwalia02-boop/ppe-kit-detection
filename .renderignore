@@ -1,0 +1,15 @@
+# Render build ignore file - keeps upload and build cache minimal
+node_modules/
+.aistudio/
+.git/
+dist/
+coverage/
+*.log
+.DS_Store
+*.tmp
+*.zip
+smart-ppe-detection/uploads/
+smart-ppe-detection/evidence/
+smart-ppe-detection/runs/
+smart-ppe-detection/models/*.pt
+smart-ppe-detection/models/*.onnx
